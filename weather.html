@@ -63,9 +63,10 @@
     .day .icon { font-size: 1.4rem; text-align: center; }
     .day .desc { font-size: 0.8rem; color: var(--muted); }
     .day .rain { font-size: 0.72rem; color: var(--cool); }
-    .day .temps { font-variant-numeric: tabular-nums; font-size: 0.9rem; white-space: nowrap; }
+    .day .temps { font-variant-numeric: tabular-nums; font-size: 0.9rem; white-space: nowrap; text-align: right; }
     .day .temps .hi { color: var(--warm); font-weight: 600; }
     .day .temps .lo { color: var(--muted); }
+    .day .temps .f { display: block; font-size: 0.72rem; color: var(--muted); }
     .status { text-align: center; color: var(--muted); padding: 2rem; }
     footer { text-align: center; color: var(--muted); font-size: 0.75rem; margin-top: 2rem; }
     footer a { color: var(--accent); }
@@ -83,7 +84,7 @@
 
   <footer>
     Data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> ·
-    updates on each page load
+    <span id="updated">rolling next 14 days, auto-refreshes every 30 min</span>
   </footer>
 
   <script>
@@ -130,8 +131,10 @@
       const rows = d.time.map((iso, i) => {
         const [emoji, label] = WMO[d.weather_code[i]] || ["❓", "—"];
         const { wd, md } = fmtDate(iso);
-        const hi = Math.round(d.temperature_2m_max[i]);
-        const lo = Math.round(d.temperature_2m_min[i]);
+        const hiC = Math.round(d.temperature_2m_max[i]);
+        const loC = Math.round(d.temperature_2m_min[i]);
+        const hiF = Math.round(d.temperature_2m_max[i] * 9 / 5 + 32);
+        const loF = Math.round(d.temperature_2m_min[i] * 9 / 5 + 32);
         const rain = d.precipitation_probability_max[i];
         return `
           <div class="day">
@@ -141,7 +144,10 @@
               <div class="desc">${label}</div>
               <div class="rain">💧 ${rain == null ? "–" : rain + "%"}</div>
             </div>
-            <div class="temps"><span class="hi">${hi}°</span> / <span class="lo">${lo}°</span></div>
+            <div class="temps">
+              <span><span class="hi">${hiC}°</span> / <span class="lo">${loC}°</span> C</span>
+              <span class="f">${hiF}° / ${loF}° F</span>
+            </div>
           </div>`;
       }).join("");
       return `
@@ -151,15 +157,28 @@
         </section>`;
     }
 
-    (async () => {
+    async function refresh() {
       const app = document.getElementById("app");
       try {
         const results = await Promise.all(CITIES.map(loadCity));
         app.innerHTML = CITIES.map((c, i) => renderCity(c, results[i])).join("");
+        const now = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+        document.getElementById("updated").textContent =
+          `rolling next 14 days · updated ${now}, auto-refreshes every 30 min`;
       } catch (err) {
-        app.innerHTML = `<div class="status">⚠️ Could not load forecast.<br>${err.message}</div>`;
+        if (!app.querySelector(".city")) {
+          app.innerHTML = `<div class="status">⚠️ Could not load forecast.<br>${err.message}</div>`;
+        }
       }
-    })();
+    }
+
+    refresh();
+    // Re-fetch every 30 minutes so the window always tracks the next two weeks.
+    setInterval(refresh, 30 * 60 * 1000);
+    // Also refresh when the tab is brought back into focus after being hidden.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") refresh();
+    });
   </script>
 </body>
 </html>
